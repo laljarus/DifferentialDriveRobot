@@ -89,46 +89,95 @@ void MotorControl::emergencyStop(){
   digitalWrite(in4,HIGH);
 }
 
-void MotorControl::processMotorCmd(float linear_vel_cmd,float angular_vel_cmd){
+/*
+void MotorControl::processMotorCmd(float& linear_vel_cmd,float& angular_vel_cmd){
 
 
-float motor_spd_left;
-float motor_spd_right;
 unsigned char left_spd,right_spd;
-bool robot_dir;
+bool robot_dir_left,robot_dir_right;
+
+motor_spd_left = abs(linear_vel_cmd);
+motor_spd_right = abs(linear_vel_cmd);
 
 if(linear_vel_cmd>0){
-  motor_spd_left = linear_vel_cmd;
-  motor_spd_right = linear_vel_cmd;
-  robot_dir = false;
+    
+  robot_dir_left = false;
+  robot_dir_right = false;
 }else{
-  motor_spd_left = -1*linear_vel_cmd;
-  motor_spd_right = -1*linear_vel_cmd;
-  robot_dir = true;
+  
+  robot_dir_left = true;
+  robot_dir_right = true;
 }
 
 if(angular_vel_cmd<0){
-  motor_spd_left = motor_spd_left + angular_vel_cmd;
+  motor_spd_left = motor_spd_left + 2*angular_vel_cmd;
 }else{
-  motor_spd_right = motor_spd_right - angular_vel_cmd;
+  motor_spd_right = motor_spd_right - 2*angular_vel_cmd;
 }
 
 if(motor_spd_left >1){
   motor_spd_left = 1;
-}else if (motor_spd_left < 0){
-  motor_spd_left = 0;
+}else if(motor_spd_left < -1){
+  motor_spd_left = 1;
+  robot_dir_left = true;
+}else if (motor_spd_left <= 0){
+  motor_spd_left = abs(motor_spd_left);
+  robot_dir_left = true;
 }
 
 if(motor_spd_right > 1){
   motor_spd_right = 1;
-}else if (motor_spd_right < 0){
-  motor_spd_right = 0;
+}else if(motor_spd_right < -1){
+  motor_spd_right = 1;
+  robot_dir_right = true;
+}else if (motor_spd_right <= 0){
+  motor_spd_right = abs(motor_spd_right);
+  robot_dir_right = true;
 }
 
 left_spd = static_cast<unsigned char>(motor_spd_left*255);
 right_spd = static_cast<unsigned char>(motor_spd_right*255);
 
-setMotorA(left_spd,robot_dir);
-setMotorB(right_spd,robot_dir);
+setMotorA(left_spd, robot_dir_left);
+setMotorB(right_spd,robot_dir_right);
+
+}*/
+
+void MotorControl::processMotorCmd(float& linear_vel_cmd,float& angular_vel_cmd){
+
+  float motor_spd_left, motor_spd_right;
+  
+  motor_spd_left = linear_vel_cmd + angular_vel_cmd;
+  motor_spd_right = linear_vel_cmd - angular_vel_cmd;
+
+  if (motor_spd_left > 1){
+    motor_spd_left = 1;
+  }else if (motor_spd_left < -1){
+    motor_spd_left = -1;
+  }
+
+  if(motor_spd_right >1){
+    motor_spd_right = 1;
+  }else if(motor_spd_right < -1){
+    motor_spd_right = -1;
+  }  
+
+  left_spd = static_cast<unsigned char>(abs(motor_spd_left)*255);
+  right_spd = static_cast<unsigned char>(abs(motor_spd_right)*255);
+
+  if(motor_spd_left < 0){
+    dir_left = true;
+  }else{
+    dir_left = false;
+  }
+
+  if(motor_spd_right < 0){
+    dir_right = true;
+  }else{
+    dir_right = false;
+  }
+
+  setMotorA(left_spd,dir_left);
+  setMotorB(right_spd,dir_right);
 
 }

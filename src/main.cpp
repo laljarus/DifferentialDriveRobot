@@ -5,22 +5,14 @@
 #include "PID.h"
 #include "MotorControl.h"
 #include "ESP32Encoder.h"
+#include "IMU_9250.h"
+#include "Wire.h"
+#include "sensor_msgs/Imu.h"
 
-// I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
-// for both classes must be in the include path of your project
-#include "I2Cdev.h"
-#include "MPU6050.h"
-
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-    #include "Wire.h"
-#endif
-
-const char* ssid     = "KabelBox-A1B0";
-const char* password = "79191001549332230052";
+const char* ssid     = "ssid";
+const char* password = "password";
 // Set the rosserial socket server IP address
-IPAddress server(192, 168, 0, 5);
+IPAddress server(192, 168,1, 33);
 // Set the rosserial socket server port
 const uint16_t serverPort = 11411;
 
@@ -28,6 +20,9 @@ ros::NodeHandle nh;
 geometry_msgs::Vector3Stamped MotorSpeeds;
 geometry_msgs::Vector3 SensValues_m3;
 geometry_msgs::Vector3 SensValues_m4;
+geometry_msgs::Vector3 Orientation;
+//sensor_msgs::Imu ImuData;
+
 float linear_vel_cmd = 0;
 float angular_vel_cmd = 0;
 float throttle = 0;
@@ -43,24 +38,68 @@ ros::Subscriber<geometry_msgs::Vector3> motor_cmd("motor_cmd", &motor_cmd_cb);
 ros::Publisher MotSpd("MotorSpeeds", &MotorSpeeds);
 ros::Publisher LeftSens("LeftSensor",&SensValues_m3);
 ros::Publisher RightSens("RightSensor",&SensValues_m4);
+//ros::Publisher IMU_pub("IMU_msg",&ImuData);
+ros::Publisher Orientation_pub("EulerAngles",&Orientation);
 
+#define CherokeeRobot
+//define TurtleBot
+#define ESP32_S3
 
-// Motor B
-const int enB = 15;
-const int in3 = 2;
-const int in4 = 4;
-const int MotBsensA = 25;
-const int MotBsensB = 33;
-ESP32Encoder encoderB;
+#if defined(CherokeeRobot)
+  // Motor B
+  const int enB = 32;
+  const int in3 = 33;
+  const int in4 = 25;
+  const int MotBsensA = 35;
+  const int MotBsensB = 34;
+  ESP32Encoder encoderB;
+  
+  // Motor A
+  
+  const int enA = 14;
+  const int in1 = 26;
+  const int in2 = 27;
+  const int MotAsensA = 13;
+  const int MotAsensB = 12;
+  ESP32Encoder encoderA;
+  
+#elif define(TurtleBot)
+  // Motor B
+  const int enB = 15;
+  const int in3 = 2;
+  const int in4 = 4;
+  const int MotBsensA = 25;
+  const int MotBsensB = 33;
+  ESP32Encoder encoderB;
 
-// Motor A
+  // Motor A
 
-const int enA = 13;
-const int in1 = 12;
-const int in2 = 14;
-const int MotAsensA = 27;
-const int MotAsensB = 26;
-ESP32Encoder encoderA;
+  const int enA = 13;
+  const int in1 = 12;
+  const int in2 = 14;
+  const int MotAsensA = 27;
+  const int MotAsensB = 26;
+  ESP32Encoder encoderA;
+
+#elif defined(ESP32_S3)
+  // Motor B
+
+  const int enB = 8;
+  const int in3 = 17;
+  const int in4 = 18;
+  const int MotBsensA = 19;
+  const int MotBsensB = 21;
+  ESP32Encoder encoderB;
+
+  // Motor A
+  const int enA = 6;
+  const int in1 = 7;
+  const int in2 = 15;
+  const int MotAsensA = 22;
+  const int MotAsensB = 23;
+  ESP32Encoder encoderA;
+
+#endif
 
 float rpm_left =0;
 float rpm_right = 0;
@@ -69,7 +108,6 @@ unsigned char right_motor_cmd = 0;
 
 //static bool nhChange = false;
 //static bool nhOldState  = false;
-
 
 // use first channel of 16 channels (started from zero)
 #define LEDC_CHANNEL_0     0
@@ -80,6 +118,29 @@ unsigned char right_motor_cmd = 0;
 
 // use 5000 Hz as a LEDC base frequency
 #define LEDC_BASE_FREQ     1000
+
+void calc_yawrate(float& rps_left,float& rps_right,float& radius,float& yaw_rate){
+  
+  // radius of the robot wheel in m
+  float WhlDia = 0.065;
+
+  // robot wheel base in m
+  float WhlBase = 0.170;
+
+  // calculation of linear velocity from rps
+  float vel_left = PI *WhlDia*rps_left;
+  float vel_right = PI * WhlDia * rps_right;
+
+  yaw_rate = (vel_left - vel_right)/WhlBase;
+
+  if(yaw_rate < 0.0001){
+    radius = 10000;
+  }
+  else{
+    radius = (vel_left + vel_right) / (2 * yaw_rate);
+  }
+  
+}
 
 // Time in seconds for the timer
 float timeSeconds=0.1;
@@ -98,6 +159,19 @@ int right_int_core;
 
 MotorControl DiffDriveMotors;
 
+#define MPU_9250
+//#define NXP_Precision
+
+#if defined(MPU_9250)
+  MPU9250 IMU(Wire, 0x68);
+  IMU_9250 imu_9250;
+#elif defined (NXP_Precision)
+
+
+#endif
+
+
+/*
 void IRAM_ATTR ISR_Left(){
 
   count_left++;
@@ -121,7 +195,7 @@ void EncRightInit(void *par){
   pinMode(MotBsensA,INPUT_PULLUP);
   pinMode(MotBsensB,INPUT);
   attachInterrupt(MotBsensA,ISR_Right,RISING);
-}
+}*/
 
 
 void setup(){
@@ -164,7 +238,7 @@ void setup(){
   attachInterrupt(MotAsensA, ISR_Left, RISING);
   attachInterrupt(MotBsensA,ISR_Right,RISING);*/
 
-  ESP32Encoder::useInternalWeakPullResistors=true;
+  ESP32Encoder::useInternalWeakPullResistors = DOWN;
   encoderA.clearCount();
   encoderB.clearCount();
 
@@ -172,12 +246,33 @@ void setup(){
   encoderA.attachHalfQuad(MotAsensA,MotAsensB);
   //encoderB.attachHalfQuad(MotBsensA,MotBsensB);  
   encoderB.attachHalfQuad(MotBsensB,MotBsensA);  
+
+  #if defined(MPU_9250)
+    bool status = IMU.begin();
+    if (status < 0)
+    {
+      Serial.println("IMU initialization unsuccessful");
+      Serial.println("Check IMU wiring or try cycling power");
+      Serial.print("Status: ");
+      Serial.println(status);
+      nh.logwarn("IMU initialization unsuccessful");
+      nh.logwarn("Check IMU wiring or try cycling power");
+      nh.logwarn("Status: ");
+      while (1)
+      {
+      }
+    }
+  #elif defined(NXP_Precision)
+
+  #endif
   
 
   nh.advertise(MotSpd);
   nh.advertise(LeftSens);
   nh.advertise(RightSens);
   nh.subscribe(motor_cmd);
+  //nh.advertise(IMU_pub);
+  nh.advertise(Orientation_pub);
 
   MotorSpeeds.header.seq = 0;
   MotorSpeeds.header.frame_id = "Motor Speeds";
@@ -189,7 +284,15 @@ void setup(){
 void loop(/* arguments */) {
   /* code */
   if(nh.connected()){
+
     DiffDriveMotors.processMotorCmd(throttle,steering);
+
+    #if defined(MPU_9250)
+      imu_9250.RunOnce();
+    #elif defined(NXP_Precision)
+
+    #endif
+
     now = millis();
     if(now-lastTrigger > timeSeconds*1000){
 
@@ -201,10 +304,14 @@ void loop(/* arguments */) {
       count_right_old = encoderB.getCount();      
       lastTrigger = millis();     
 
+      float YawRate,CurRadius;
+
+      calc_yawrate(rpm_left,rpm_right,CurRadius,YawRate);
+
       MotorSpeeds.header.stamp = nh.now();
       MotorSpeeds.vector.x = encoderA.getCount();
       MotorSpeeds.vector.y = encoderB.getCount();
-      MotorSpeeds.vector.z = float(0.0);
+      MotorSpeeds.vector.z = YawRate;
       MotSpd.publish(&MotorSpeeds);
       
       /*Serial.print("\n Left Motor Speed: \t");
@@ -216,22 +323,79 @@ void loop(/* arguments */) {
       SensValues_m3.y = float(digitalRead(MotBsensB));
       SensValues_m3.z = rpm_left;
       LeftSens.publish(&SensValues_m3); */
+      //bool state = IMU.readSensor();
 
       SensValues_m3.x = rpm_left;
       SensValues_m3.y = rpm_right;
-      SensValues_m3.z = float(0.0);
+      #if defined(MPU_9250)
+
+        SensValues_m3.z = float(imu_9250.status);
+      #elif defined(NXP_Precision)
+
+      #endif
       LeftSens.publish(&SensValues_m3);
 
-      SensValues_m4.x = float(digitalRead(MotAsensA));
-      SensValues_m4.y = float(digitalRead(MotAsensB));
-      SensValues_m4.z = rpm_right;
+      float LeftCmd,RightCmd;
+
+      if(DiffDriveMotors.getLeftDir()){
+        LeftCmd = DiffDriveMotors.getLeftSpeed() * -1;
+      }else{
+        LeftCmd = DiffDriveMotors.getLeftSpeed();
+      }
+
+      if(DiffDriveMotors.getRightDir()){
+        RightCmd = DiffDriveMotors.getRightSpeed() * -1;
+      }else{
+        RightCmd = DiffDriveMotors.getRightSpeed();
+      }
+
+      SensValues_m4.x = LeftCmd;
+      SensValues_m4.y = RightCmd;
+      #if defined(MPU_9250)
+        
+        SensValues_m4.z = imu_9250.gz;
+      #elif defined(NXP_Precision)
+
+      #endif
+      
       RightSens.publish(&SensValues_m4);
 
-    }    
+      #if defined(MPU_9250)
+
+        Orientation.x = imu_9250.pitch;
+        Orientation.y = imu_9250.roll;
+        Orientation.z = imu_9250.yaw;
+        Orientation_pub.publish(&Orientation);
+      #elif defined(NXP_Precision)
+
+      #endif
+
+      
+
+      /*
+
+      ImuData.header.stamp = nh.now();
+      ImuData.header.frame_id = "base_link";
+      ImuData.orientation.w = imu_9250.quat[0];
+      ImuData.orientation.x = imu_9250.quat[1];
+      ImuData.orientation.y = imu_9250.quat[2];
+      ImuData.orientation.z = imu_9250.quat[3];
+      ImuData.linear_acceleration.x = imu_9250.a_linear(0);
+      ImuData.linear_acceleration.y = imu_9250.a_linear(1);
+      ImuData.linear_acceleration.z = imu_9250.a_linear(2);
+      ImuData.angular_velocity.x = imu_9250.gx;
+      ImuData.angular_velocity.y = imu_9250.gy;
+      ImuData.angular_velocity.z = imu_9250.gz;
+      IMU_pub.publish(&ImuData);
+
+      */
+    }  
+    
+    //float ax = IMU.getAccelX_mss();
+    //float ay = IMU.getAccelY_mss();
+    //float az = IMU.getAccelZ_mss();
 
     
-
-
   }else{
     DiffDriveMotors.emergencyStop();
   }
