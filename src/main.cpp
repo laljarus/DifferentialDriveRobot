@@ -9,8 +9,8 @@
 #include "Wire.h"
 #include "sensor_msgs/Imu.h"
 
-const char* ssid     = "ssid";
-const char* password = "password";
+const char *ssid = "FRITZ!Box 6660 Cable AU";
+const char *password = "95949519659820432227";
 // Set the rosserial socket server IP address
 IPAddress server(192, 168,1, 33);
 // Set the rosserial socket server port
@@ -41,7 +41,7 @@ ros::Publisher RightSens("RightSensor",&SensValues_m4);
 //ros::Publisher IMU_pub("IMU_msg",&ImuData);
 ros::Publisher Orientation_pub("EulerAngles",&Orientation);
 
-#define CherokeeRobot
+//#define CherokeeRobot
 //define TurtleBot
 #define ESP32_S3
 
@@ -62,8 +62,10 @@ ros::Publisher Orientation_pub("EulerAngles",&Orientation);
   const int MotAsensA = 13;
   const int MotAsensB = 12;
   ESP32Encoder encoderA;
+
+  const int stdby = 0;
   
-#elif define(TurtleBot)
+#elif defined(TurtleBot)
   // Motor B
   const int enB = 15;
   const int in3 = 2;
@@ -81,23 +83,32 @@ ros::Publisher Orientation_pub("EulerAngles",&Orientation);
   const int MotAsensB = 26;
   ESP32Encoder encoderA;
 
+  const int stdby = 0;
+
 #elif defined(ESP32_S3)
   // Motor B
 
   const int enB = 8;
   const int in3 = 17;
   const int in4 = 18;
-  const int MotBsensA = 19;
-  const int MotBsensB = 21;
+  const int MotBsensA = 35;
+  const int MotBsensB = 0;
   ESP32Encoder encoderB;
 
   // Motor A
   const int enA = 6;
   const int in1 = 7;
   const int in2 = 15;
-  const int MotAsensA = 22;
-  const int MotAsensB = 23;
+  const int MotAsensA = 42;
+  const int MotAsensB = 41;
   ESP32Encoder encoderA;
+
+  const int stdby = 16;
+
+  const int EncAPwr = 1;
+  const int EncAGnd = 2;
+  const int EncBPwr = 37;
+  const int EncBGnd = 36;
 
 #endif
 
@@ -170,33 +181,36 @@ MotorControl DiffDriveMotors;
 
 #endif
 
+void EncoderSetup(){
 
-/*
-void IRAM_ATTR ISR_Left(){
+  #if defined(ESP32_S3)
 
-  count_left++;
-  left_int_core = xPortGetCoreID();
-}
+    pinMode(EncAPwr,OUTPUT);
+    pinMode(EncAGnd,OUTPUT);
+    pinMode(EncBPwr,OUTPUT);
+    pinMode(EncBGnd,OUTPUT);
 
-void IRAM_ATTR ISR_Right() {
+    digitalWrite(EncAPwr,HIGH);
+    digitalWrite(EncAGnd,LOW);
+    digitalWrite(EncBPwr,HIGH);
+    digitalWrite(EncBGnd,LOW);
   
-  count_right++;
-  right_int_core = xPortGetCoreID();
+  #endif
+
+  encoderA.clearCount();
+  encoderB.clearCount();
+
+  ESP32Encoder::useInternalWeakPullResistors = DOWN;
+
+  
+  encoderA.attachHalfQuad(MotAsensA,MotAsensB);  
+  encoderB.attachHalfQuad(MotBsensB,MotBsensA);  
+
+  left_int_core = digitalPinToInterrupt(MotAsensA);
+  right_int_core = digitalPinToInterrupt(MotBsensB);
+
+  
 }
-
-void EncLeftInit(void *par){
-  pinMode(MotAsensA, INPUT_PULLUP);  
-  pinMode(MotAsensB,INPUT);  
-  attachInterrupt(MotAsensA, ISR_Left, RISING);  
-}
-
-void EncRightInit(void *par){
-
-  pinMode(MotBsensA,INPUT_PULLUP);
-  pinMode(MotBsensB,INPUT);
-  attachInterrupt(MotBsensA,ISR_Right,RISING);
-}*/
-
 
 void setup(){
 
@@ -227,17 +241,7 @@ void setup(){
   DiffDriveMotors.Init(enA,in1,in2,enB,in3,in4,LEDC_CHANNEL_0,LEDC_CHANNEL_1,
                       LEDC_BASE_FREQ,LEDC_TIMER_8_BIT);
 
-
-  //xTaskCreatePinnedToCore(EncLeftInit,"LeftEncoderInit",100,NULL,1,NULL,0);
-  //xTaskCreatePinnedToCore(EncRightInit,"RightEncoderInit",100,NULL,2,NULL,0);
-
-  /*pinMode(MotAsensA, INPUT_PULLUP);
-  pinMode(MotBsensA,INPUT_PULLUP);
-  pinMode(MotAsensB,INPUT);
-  pinMode(MotBsensB,INPUT);
-  attachInterrupt(MotAsensA, ISR_Left, RISING);
-  attachInterrupt(MotBsensA,ISR_Right,RISING);*/
-
+  /*
   ESP32Encoder::useInternalWeakPullResistors = DOWN;
   encoderA.clearCount();
   encoderB.clearCount();
@@ -245,9 +249,18 @@ void setup(){
   //encoderA.attachHalfQuad(25,33);
   encoderA.attachHalfQuad(MotAsensA,MotAsensB);
   //encoderB.attachHalfQuad(MotBsensA,MotBsensB);  
-  encoderB.attachHalfQuad(MotBsensB,MotBsensA);  
+  encoderB.attachHalfQuad(MotBsensB,MotBsensA);  */
 
+  EncoderSetup();
+  
   #if defined(MPU_9250)
+
+    #if defined(ESP32_S3)
+      const int SDA = 20;
+      const int SCL = 19;
+
+      Wire.begin(SDA,SCL);
+    #endif
     bool status = IMU.begin();
     if (status < 0)
     {

@@ -7,7 +7,7 @@ MotorControl::~MotorControl(){}
 
 void MotorControl::Init(const int enA_in, const int in1_in,const int in2_in,const int enB_in,
             const int in3_in, const int in4_in,const int led_channel_0_in,
-            const int led_channel_1_in, const int led_freq_in, const int led_timer_precision_in){
+            const int led_channel_1_in, const int led_freq_in, const int led_timer_precision_in,const int stdby_in){
 
               enA = enA_in;
               enB = enB_in;
@@ -19,6 +19,7 @@ void MotorControl::Init(const int enA_in, const int in1_in,const int in2_in,cons
               led_channel_1 = led_channel_1_in;
               led_freq = led_freq_in;
               led_timer_precision = led_timer_precision_in;
+              stdby = stdby_in;
 
               // Set all the motor control pins to outputs
               ledcSetup(led_channel_0, led_freq, led_timer_precision);
@@ -32,7 +33,10 @@ void MotorControl::Init(const int enA_in, const int in1_in,const int in2_in,cons
               pinMode(in3,OUTPUT);
               pinMode(in4,OUTPUT);
 
-
+              if(stdby != 0){
+                pinMode(stdby,OUTPUT);
+                digitalWrite(stdby,HIGH);
+              }
 }
 
 void MotorControl::setMotorA(int speed,bool dir){
